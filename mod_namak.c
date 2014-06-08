@@ -74,6 +74,7 @@ static int namak_handler(request_rec *r)
 
     // check for memory allocation problems
     if (bucket_bin == NULL || key_bin    == NULL) {
+        riak_config_free(&cfg);
         return DECLINED;
     }
 
@@ -85,18 +86,32 @@ static int namak_handler(request_rec *r)
     // Create a connection with the default address resolver
     namak_svr_cfg* svr = ap_get_module_config(r->per_dir_config, &namak_module);
     if (svr->riak_server == NULL || svr->riak_port == NULL)
+    {
+        riak_binary_free(cfg, &bucket_type_bin);
+        riak_binary_free(cfg, &bucket_bin);
+        riak_binary_free(cfg, &key_bin);
+        riak_config_free(&cfg);
         return DECLINED;
+    }
 
     err = riak_connection_new(cfg, &cxn, svr->riak_server, svr->riak_port, NULL);
     if (err) {
         ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_NOTICE, 0, r->server, "error3");
-        return DECLINED;
+        riak_binary_free(cfg, &bucket_type_bin);
+        riak_binary_free(cfg, &bucket_bin);
+        riak_binary_free(cfg, &key_bin);
+        riak_config_free(&cfg);
+        return HTTP_SERVICE_UNAVAILABLE;
     }
 
     // handle possible operations from the command line
     get_options = riak_get_options_new(cfg);
     if (get_options == NULL) {
         ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_NOTICE, 0, r->server, "error4");
+        riak_binary_free(cfg, &bucket_type_bin);
+        riak_binary_free(cfg, &bucket_bin);
+        riak_binary_free(cfg, &key_bin);
+        riak_config_free(&cfg);
         return DECLINED;
     }
     riak_get_options_set_basic_quorum(get_options, RIAK_TRUE);
@@ -104,6 +119,14 @@ static int namak_handler(request_rec *r)
     err = riak_get(cxn, bucket_type_bin, bucket_bin, key_bin, get_options, &get_response);
     if (err == ERIAK_OK) {
         riak_object **objects = riak_get_get_content(get_response);
+        if (riak_get_get_n_content(get_response) < 1)
+        {
+            riak_binary_free(cfg, &bucket_type_bin);
+            riak_binary_free(cfg, &bucket_bin);
+            riak_binary_free(cfg, &key_bin);
+            riak_config_free(&cfg);
+            return HTTP_NOT_FOUND;
+        }
         int i = 0;
         for(i = 0; i < riak_get_get_n_content(get_response); i++) {
             riak_object *obj = objects[i];
@@ -115,8 +138,11 @@ static int namak_handler(request_rec *r)
     riak_get_response_free(cfg, &get_response);
     riak_get_options_free(cfg, &get_options);
     if (err) {
-        ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_NOTICE, 0, r->server, "error5");
-        return DECLINED;
+        riak_binary_free(cfg, &bucket_type_bin);
+        riak_binary_free(cfg, &bucket_bin);
+        riak_binary_free(cfg, &key_bin);
+        riak_config_free(&cfg);
+        return HTTP_SERVICE_UNAVAILABLE;
     }
 
     // cleanup
