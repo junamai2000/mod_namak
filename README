@@ -1,0 +1,9 @@
+How to setup
+
+<Location /image>
+    SetHandler namak
+    RiakServer 192.168.10.80
+    RiakPort   8087
+    Header set Cache-Control max-age=1000
+    ExpiresDefault "access plus 7 days"
+</Location>
